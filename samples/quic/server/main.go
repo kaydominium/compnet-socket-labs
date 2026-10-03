@@ -31,11 +31,10 @@ var (
 )
 
 func ResolveConfig() (string, string) {
-	ip := os.Getenv("SERVER_ADDR")
+	ip, port := os.Getenv("SERVER_ADDR"), os.Getenv("PORT")
 	if ip == "" {
 		ip = DefaultServerIP
 	}
-	port := os.Getenv("PORT")
 	if port == "" {
 		port = DefaultServerPort
 	}
@@ -43,11 +42,10 @@ func ResolveConfig() (string, string) {
 }
 
 func ResolveALPN() string {
-	alpn := os.Getenv("ALPN")
-	if alpn == "" {
-		alpn = AppLayerProto
+	if alpn := os.Getenv("ALPN"); alpn != "" {
+		return alpn
 	}
-	return alpn
+	return AppLayerProto
 }
 
 func main() {
@@ -125,19 +123,14 @@ func main() {
 func connectionHandler(connection *quic.Conn) {
 	fmt.Printf("[quic] Receive connection from %s\n", connection.RemoteAddr())
 
-	streams := make([]*quic.Stream, StreamCount)
-	for i := range streams {
+	var waitGroup sync.WaitGroup
+	for i := 0; i < StreamCount; i++ {
 		stream, err := connection.AcceptStream(context.Background())
 		if err != nil {
 			log.Printf("[quic] Accept stream error: %v\n", err)
 			return
 		}
-		streams[i] = stream
-	}
-
-	var waitGroup sync.WaitGroup
-	waitGroup.Add(len(streams))
-	for _, stream := range streams {
+		waitGroup.Add(1)
 		go func(stream *quic.Stream) {
 			defer waitGroup.Done()
 			streamHandler(connection.RemoteAddr(), stream)
