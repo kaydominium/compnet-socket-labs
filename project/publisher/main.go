@@ -8,9 +8,9 @@ import (
 
 var (
 	DefaultServerIP   = "127.0.0.1"
-	DefaultServerPort = "54321"
+	DefaultServerPort = "6584"
 	BufferSize        = 2048
-	AppLayerProto     = "lrt-jakarta-demo"
+	AppLayerProto     = "lrt-jakarta-2406396584"
 )
 
 func ResolveConfig() (string, string) {
