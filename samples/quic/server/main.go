@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/qlog"
@@ -20,12 +21,13 @@ import (
 
 var (
 	DefaultServerIP   = "127.0.0.1"
-	DefaultServerPort = "54321"
+	DefaultServerPort = "6584"
 	ServerType        = "udp4"
 	BufferSize        = 2048
-	AppLayerProto     = "compnet-quic-sample"
+	AppLayerProto     = "compnet-quic-sample-aydin"
 	LogDir            = "logs"
 	SSLKeyLogFileName = "ssl-key.log"
+	StreamCount       = 2
 )
 
 func ResolveConfig() (string, string) {
@@ -123,12 +125,25 @@ func main() {
 func connectionHandler(connection *quic.Conn) {
 	fmt.Printf("[quic] Receive connection from %s\n", connection.RemoteAddr())
 
-	stream, err := connection.AcceptStream(context.Background())
-	if err != nil {
-		return
+	streams := make([]*quic.Stream, StreamCount)
+	for i := range streams {
+		stream, err := connection.AcceptStream(context.Background())
+		if err != nil {
+			log.Printf("[quic] Accept stream error: %v\n", err)
+			return
+		}
+		streams[i] = stream
 	}
 
-	go streamHandler(connection.RemoteAddr(), stream)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(len(streams))
+	for _, stream := range streams {
+		go func(stream *quic.Stream) {
+			defer waitGroup.Done()
+			streamHandler(connection.RemoteAddr(), stream)
+		}(stream)
+	}
+	waitGroup.Wait()
 }
 
 func streamHandler(remoteAddr net.Addr, stream *quic.Stream) {

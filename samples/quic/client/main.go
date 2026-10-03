@@ -11,19 +11,21 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/qlog"
 )
 
 var (
-	DefaultServerIP   = "127.0.0.1"
-	DefaultServerPort = "54321"
+	DefaultServerIP   = "18.207.183.144"
+	DefaultServerPort = "6584"
 	ServerType        = "udp4"
 	BufferSize        = 2048
-	AppLayerProto     = "compnet-quic-sample"
+	AppLayerProto     = "compnet-quic-sample-aydin"
 	LogDir            = "logs"
 	SSLKeyLogFileName = "ssl-key.log"
+	StreamCount       = 2
 )
 
 func ResolveConfig() (string, string) {
@@ -96,36 +98,46 @@ func main() {
 
 	fmt.Printf("[quic] Dialling from %s to %s\n", connection.LocalAddr(), connection.RemoteAddr())
 
-	fmt.Printf("[quic] Creating receive buffer of size %d\n", BufferSize)
-	receiveBuffer := make([]byte, BufferSize)
-
 	fmt.Printf("[quic] Input message to be sent to server: ")
 	message, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	stream, err := connection.OpenStreamSync(context.Background())
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer stream.Close()
-
-	fmt.Printf("[quic] Opened bidirectional stream %d to %s\n", stream.StreamID(), connection.RemoteAddr())
-
-	fmt.Printf("[quic] Sending message '%s' to server\n", message)
-	_, err = stream.Write([]byte(message))
-	if err != nil {
-		log.Fatalln(err)
+	streams := make([]*quic.Stream, StreamCount)
+	for i := range streams {
+		streams[i], err = connection.OpenStreamSync(context.Background())
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Printf("[quic] Opened bidirectional stream %d to %s\n", streams[i].StreamID(), connection.RemoteAddr())
 	}
 
-	receiveLength, err := stream.Read(receiveBuffer)
-	if err != nil && err != io.EOF {
-		log.Fatalln(err)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(len(streams))
+	for _, stream := range streams {
+		go func(stream *quic.Stream) {
+			defer waitGroup.Done()
+			defer stream.Close()
+			receiveBuffer := make([]byte, BufferSize)
+			fmt.Printf("[quic] Creating receive buffer of size %d for stream %d\n", BufferSize, stream.StreamID())
+
+			fmt.Printf("[quic] Sending message '%s' on stream %d to server\n", message, stream.StreamID())
+			if _, err := stream.Write([]byte(message)); err != nil {
+				log.Printf("[quic] Stream %d write error: %v\n", stream.StreamID(), err)
+				return
+			}
+
+			receiveLength, err := stream.Read(receiveBuffer)
+			if err != nil && err != io.EOF {
+				log.Printf("[quic] Stream %d read error: %v\n", stream.StreamID(), err)
+				return
+			}
+
+			fmt.Printf("[quic] Received %d bytes of message on stream %d from server\n", receiveLength, stream.StreamID())
+			response := string(receiveBuffer[:receiveLength])
+			fmt.Printf("[quic] Response from server on stream %d: %s\n", stream.StreamID(), response)
+		}(stream)
 	}
-
-	fmt.Printf("[quic] Received %d bytes of message from server\n", receiveLength)
-
-	response := string(receiveBuffer[:receiveLength])
-	fmt.Printf("[quic] Response from server: %s\n", response)
+	waitGroup.Wait()
 }
