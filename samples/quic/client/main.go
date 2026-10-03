@@ -98,6 +98,8 @@ func main() {
 
 	fmt.Printf("[quic] Dialling from %s to %s\n", connection.LocalAddr(), connection.RemoteAddr())
 
+	fmt.Printf("[quic] Creating receive buffer of size %d\n", BufferSize)
+
 	fmt.Printf("[quic] Input message to be sent to server: ")
 	message, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
@@ -119,24 +121,23 @@ func main() {
 		go func(stream *quic.Stream) {
 			defer waitGroup.Done()
 			defer stream.Close()
-			receiveBuffer := make([]byte, BufferSize)
-			fmt.Printf("[quic] Creating receive buffer of size %d for stream %d\n", BufferSize, stream.StreamID())
 
-			fmt.Printf("[quic] Sending message '%s' on stream %d to server\n", message, stream.StreamID())
+			fmt.Printf("[quic] [Stream %d] Sending message '%s' to server\n", stream.StreamID(), message)
 			if _, err := stream.Write([]byte(message)); err != nil {
 				log.Printf("[quic] Stream %d write error: %v\n", stream.StreamID(), err)
 				return
 			}
 
-			receiveLength, err := stream.Read(receiveBuffer)
+			streamReceiveBuffer := make([]byte, BufferSize)
+			receiveLength, err := stream.Read(streamReceiveBuffer)
 			if err != nil && err != io.EOF {
 				log.Printf("[quic] Stream %d read error: %v\n", stream.StreamID(), err)
 				return
 			}
 
-			fmt.Printf("[quic] Received %d bytes of message on stream %d from server\n", receiveLength, stream.StreamID())
-			response := string(receiveBuffer[:receiveLength])
-			fmt.Printf("[quic] Response from server on stream %d: %s\n", stream.StreamID(), response)
+			fmt.Printf("[quic] [Stream %d] Received %d bytes of message from server\n", stream.StreamID(), receiveLength)
+			response := string(streamReceiveBuffer[:receiveLength])
+			fmt.Printf("[quic] [Stream %d] Response from server: %s\n", stream.StreamID(), response)
 		}(stream)
 	}
 	waitGroup.Wait()

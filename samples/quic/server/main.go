@@ -147,9 +147,13 @@ func connectionHandler(connection *quic.Conn) {
 }
 
 func streamHandler(remoteAddr net.Addr, stream *quic.Stream) {
+	streamHandlerWithID(remoteAddr, stream)
+}
+
+func streamHandlerWithID(remoteAddr net.Addr, stream *quic.Stream) {
 	defer stream.Close()
 
-	fmt.Printf("[quic] [Client: %s] Creating receive buffer of size %d\n", remoteAddr, BufferSize)
+	fmt.Printf("[quic] [Client: %s] [Stream: %d] Creating receive buffer of size %d\n", remoteAddr, stream.StreamID(), BufferSize)
 	receiveBuffer := make([]byte, BufferSize)
 
 	receiveLength, err := stream.Read(receiveBuffer)
@@ -160,10 +164,10 @@ func streamHandler(remoteAddr net.Addr, stream *quic.Stream) {
 		return
 	}
 
-	fmt.Printf("[quic] [Client: %s] Received %d bytes of message\n", remoteAddr, receiveLength)
+	fmt.Printf("[quic] [Client: %s] [Stream: %d] Received %d bytes of message\n", remoteAddr, stream.StreamID(), receiveLength)
 	message := string(receiveBuffer[:receiveLength])
 
-	fmt.Printf("[quic] [Client: %s] Message: %s\n", remoteAddr, message)
+	fmt.Printf("[quic] [Client: %s] [Stream: %d] Message: %s\n", remoteAddr, stream.StreamID(), message)
 
 	response, err := logic(message)
 	if err != nil {
@@ -171,7 +175,7 @@ func streamHandler(remoteAddr net.Addr, stream *quic.Stream) {
 		return
 	}
 
-	fmt.Printf("[quic] [Client: %s] Sending Response: %s\n", remoteAddr, response)
+	fmt.Printf("[quic] [Client: %s] [Stream: %d] Sending Response: %s\n", remoteAddr, stream.StreamID(), response)
 	_, err = stream.Write([]byte(response))
 	if err != nil {
 		log.Printf("[quic] [Client: %s] Write error: %v\n", remoteAddr, err)
